@@ -80,7 +80,7 @@ for P in P_ges_list:
     ax.plot(T_array, X_GGW_Result, label=f'{P} atm')
 
 ax.set_xlabel("Temperatur $T$ / K")
-ax.set_ylabel(f"Umsatz $X_{{{edukt_label}}}$ / %")
+ax.set_ylabel(f"Umsatzgrad $X_{{{edukt_label}}}$ / %")
 
 ax.set_xlim(T_min, T_max)
 ax.set_ylim(0, 100)
