@@ -4,65 +4,84 @@ import matplotlib.pyplot as plt
 from scipy.optimize import bisect
 from thermo.chemical import Chemical
 
-# Set page config
-st.set_page_config(page_title="Methanol Equilibrium", layout="wide")
+st.set_page_config(page_title="Gleichgewicht Methanolsynthese", layout="wide")
+st.title("Gleichgewicht der Methanolsynthese")
 
-st.title("Methanol Synthesis GGW: CO + 2H₂ ⇌ CH₃OH")
+# Seitenleiste: Auswahl der Reaktion
+reaktionswahl = st.sidebar.selectbox("Wähle das Edukt:", ["CO", "CO₂"])
 
-# Sidebar controls
-st.sidebar.header("Eingabe Parameter")
-
+# Seitenleiste: Eingaben
 P_ges_list = st.sidebar.multiselect(
-    "Wähle Drücke in atm:", [1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500], default=[1, 10, 100]
+    "Wähle Drücke (in atm):", [1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500], default=[1, 10, 100]
 )
+T_min = st.sidebar.slider("Minimale Temperatur (K)", 298, 900, 300)
+T_max = st.sidebar.slider("Maximale Temperatur (K)", 298, 900, 800)
+K_modell = st.sidebar.radio("Gleichgewichtskonstante nach:", ["van’t Hoff", "Ullmann"], index=0)
 
-T_min = st.sidebar.slider("Min Temperatur (K)", 298, 873, 300)
-T_max = st.sidebar.slider("Max Temperatur (K)", 298, 873, 800)
+# Reaktionsdefinitionen und stöchiometrische Koeffizienten
+if reaktionswahl == "CO":
+    species = ['carbon monoxide', 'H2', 'methanol']
+    nu_i = np.array([-1, -2, 1])
+    edukt_label = "CO"
+    H2_coeff = 2
+else:
+    species = ['carbon dioxide', 'H2', 'methanol', 'water']
+    nu_i = np.array([-1, -3, 1, 1])
+    edukt_label = "CO₂"
+    H2_coeff = 3
 
-K_model = st.sidebar.radio("Equilibrium Constant Model", ["van't Hoff", "Ullmann"], index=0)
-
-# Chemical definitions
-CO = Chemical('carbon monoxide')
-H2 = Chemical('H2')
-CH3OH = Chemical('methanol')
-
-H_f_i = np.array([CO.Hfm, H2.Hfm, CH3OH.Hfgm])
-G_f_i = np.array([CO.Gfm, H2.Gfm, CH3OH.Gfgm])
-
-nu_i = np.array([-1, -2, 1])
 sum_nu = float(np.sum(nu_i))
 
+# Chemikalien definieren
+chemicals = [Chemical(s) for s in species]
+H_f_i = np.array([chem.Hfm if hasattr(chem, 'Hfm') else chem.Hfgm for chem in chemicals])
+G_f_i = np.array([chem.Gfm if hasattr(chem, 'Gfm') else chem.Gfgm for chem in chemicals])
+
+# ΔH und ΔG berechnen
 dH_r = nu_i @ H_f_i
 dG_r = nu_i @ G_f_i
-
 K_stp = np.exp(-1 / 8.314 * dG_r / 298)
 
+# Gleichgewichtskonstanten
 def K_vantHoff(T):
     return np.exp(np.log(K_stp) + dH_r / 8.314 * (1 / 298 - 1 / T))
 
-def K_Ullmann(T):
-    return 10 ** (3921 / T - 7.971 * np.log10(T) + 2.499 / 1000 * T - 2.953E-7 * T**2 + 10.2)
+def K_ullmann(T):
+    # Nur für CO-System geeignet
+    if reaktionswahl == "CO":
+        return 10 ** (3921 / T - 7.971 * np.log10(T) + 2.499 / 1000 * T - 2.953E-7 * T**2 + 10.2)
+    else:
+        return K_vantHoff(T)
 
-def Funk(xi, P_ges, T, K_func):
-    n_CO = 1 + nu_i[0] * xi
-    n_H2 = 2 + nu_i[1] * xi
-    n_CH3OH = 0 + nu_i[2] * xi
-
-    n_total = n_CO + n_H2 + n_CH3OH
-    x_CO = n_CO / n_total
-    x_H2 = n_H2 / n_total
-    x_CH3OH = n_CH3OH / n_total
-
-    return x_CH3OH / x_CO / (x_H2 ** 2) * P_ges**sum_nu - K_func(T)
-
+# Temperaturbereich
 T_array = np.linspace(T_min, T_max, 100)
+
+# Gleichung für das Gleichgewicht
+def Funk(xi, P_ges, T, K_func):
+    if reaktionswahl == "CO":
+        n_0 = np.array([1, 2, 0])
+    else:
+        n_0 = np.array([1, 3, 0, 0])
+
+    n = n_0 + nu_i * xi
+    n_total = np.sum(n)
+    x = n / n_total
+
+    if reaktionswahl == "CO":
+        Q = x[2] / (x[0] * x[1]**2)
+    else:
+        Q = (x[2] * x[3]) / (x[0] * x[1]**3)
+
+    return Q * P_ges**sum_nu - K_func(T)
+
+# Plot
 fig, ax = plt.subplots()
 
 for P in P_ges_list:
     X_GGW_Result = []
     for T in T_array:
         try:
-            xi = bisect(Funk, 1E-9, 1 - 1E-9, args=(P, T, K_vantHoff if K_model == "van't Hoff" else K_Ullmann))
+            xi = bisect(Funk, 1E-9, 1 - 1E-9, args=(P, T, K_vantHoff if K_modell == "van’t Hoff" else K_ullmann))
             X_GGW = xi / 1 * 100
         except:
             X_GGW = np.nan
@@ -70,12 +89,12 @@ for P in P_ges_list:
 
     ax.plot(T_array, X_GGW_Result, label=f'{P} atm')
 
-ax.set_xlabel("Temperatur $T$ / K")
-ax.set_ylabel("Conversion $X_{CO}$ / %")
-ax.set_title("Gleichgewichtsumsatzgrad vs. Temperatur")
+ax.set_xlabel("Temperatur $T$ [K]")
+ax.set_ylabel(f"Umsatz $X_{{{edukt_label}}}$ [%]")
+ax.set_title(f"Gleichgewichtsumsatz von {edukt_label} in Abhängigkeit von der Temperatur")
 ax.set_xlim(T_min, T_max)
 ax.set_ylim(0, 100)
 ax.grid(True)
-ax.legend()
+ax.legend(title="Druck")
 
 st.pyplot(fig)
