@@ -7,7 +7,7 @@ from thermo.chemical import Chemical
 # Set page config
 st.set_page_config(page_title="Methanol Equilibrium", layout="wide")
 
-st.title("Methanol Synthesis Equilibrium: CO + 2H₂ ⇌ CH₃OH")
+st.title("Methanol Synthesis GGW: CO + 2H₂ ⇌ CH₃OH")
 
 # Sidebar controls
 st.sidebar.header("Eingabe Parameter")
